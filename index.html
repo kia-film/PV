@@ -195,7 +195,7 @@
 </head>
 <body>
 
-<div id="loading" class="loading-overlay">正在讀取車型與隔熱紙資料庫...</div>
+<div id="loading" class="loading-overlay">正在讀取 Excel 車型與隔熱紙對照表...</div>
 
 <div class="container">
     <div class="header-title">
@@ -229,7 +229,7 @@
             </div>
             <div class="form-group">
                 <label for="location">存放(施工)地點 (必填)</label>
-                <input type="text" id="location" placeholder="例如：南港直營廠" oninput="updateNote()">
+                <input type="text" id="location" placeholder="例如：南港整備中心" oninput="updateNote()">
             </div>
             <div class="form-group" style="grid-column: 1 / -1;">
                 <label for="otherInfo">其他 (選填，例如交車日、補充事項)</label>
@@ -268,7 +268,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>透光度 (法規70以上)</label>
+                    <label>透光度</label>
                     <select id="front-vlt" onchange="updateNote()">
                         <option value="">-- 請先選規格 --</option>
                     </select>
@@ -313,7 +313,7 @@
             <label style="margin-top: 6px; display: block; color: var(--primary);">車身各位置透光度：</label>
             <div class="vlt-subgrid">
                 <div class="form-group">
-                    <label>前窗 (法規40以上)</label>
+                    <label>前窗 (建議≥38)</label>
                     <select id="body-vlt-front" onchange="updateNote()">
                         <option value="">-- 請先選規格 --</option>
                     </select>
@@ -394,10 +394,12 @@ let DATABASE = [];
 let CAR_MODELS = [];
 const PART_TYPES_MAP = { "front": "前擋", "body": "車身", "sunroof": "天窗" };
 
-// 自動載入 Excel 檔案
+// 自動載入 Excel 檔案（加入 prevent cache 防快取機制）
 async function loadExcelData() {
     try {
-        let response = await fetch('database.xlsx');
+        // 加上動態時間戳記，強制瀏覽器每一次重新整理都抓最新版的 database.xlsx
+        const cacheBuster = `?v=${Date.now()}`;
+        let response = await fetch(`database.xlsx${cacheBuster}`);
         if (!response.ok) throw new Error("找不到 database.xlsx");
 
         let arrayBuffer = await response.arrayBuffer();
