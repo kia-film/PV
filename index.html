@@ -164,7 +164,7 @@
         }
         textarea {
             resize: vertical;
-            min-height: 180px;
+            min-height: 200px;
             font-size: 0.95rem;
             line-height: 1.5;
             background-color: #f8f9fa;
@@ -221,19 +221,23 @@
             </div>
             <div class="form-group">
                 <label for="carColor">車色 (選填)</label>
-                <input type="text" id="carColor" placeholder="例如：極光白" oninput="updateNote()">
+                <input type="text" id="carColor" placeholder="例如：白" oninput="updateNote()">
             </div>
             <div class="form-group">
                 <label for="agent">業代 (必填)</label>
-                <input type="text" id="agent" placeholder="例如：張小明" oninput="updateNote()">
+                <input type="text" id="agent" placeholder="例如：王小明" oninput="updateNote()">
             </div>
             <div class="form-group">
                 <label for="location">存放(施工)地點 (必填)</label>
                 <input type="text" id="location" placeholder="例如：南港直營廠" oninput="updateNote()">
             </div>
+            <div class="form-group">
+                <label for="deliveryDate">交車日 (選填)</label>
+                <input type="date" id="deliveryDate" onchange="updateNote()">
+            </div>
             <div class="form-group" style="grid-column: 1 / -1;">
-                <label for="otherInfo">其他 (選填，例如交車日、補充事項)</label>
-                <input type="text" id="otherInfo" placeholder="例如：預計 10/25 交車、請留廢料" oninput="updateNote()">
+                <label for="otherInfo">補充事項 (選填)</label>
+                <input type="text" id="otherInfo" placeholder="例如：請留廢料" oninput="updateNote()">
             </div>
         </div>
     </div>
@@ -282,7 +286,7 @@
             <div class="alert" id="front-alert">⚠️ 警告：所選件號適用車型與您選擇的車型不符！</div>
         </div>
 
-        <!-- 車身 (分為前窗、後窗、後擋) -->
+        <!-- 車身 (分為前座、後座、後擋) -->
         <div class="part-block">
             <div class="part-title">【車身】</div>
             <div class="part-grid">
@@ -313,13 +317,13 @@
             <label style="margin-top: 6px; display: block; color: var(--primary);">車身各位置透光度：</label>
             <div class="vlt-subgrid">
                 <div class="form-group">
-                    <label>前窗 (法規40以上)</label>
+                    <label>前座 (法規40以上)</label>
                     <select id="body-vlt-front" onchange="updateNote()">
                         <option value="">-- 請先選規格 --</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>後窗</label>
+                    <label>後座</label>
                     <select id="body-vlt-rear" onchange="updateNote()">
                         <option value="">-- 請先選規格 --</option>
                     </select>
@@ -397,7 +401,6 @@ const PART_TYPES_MAP = { "front": "前擋", "body": "車身", "sunroof": "天窗
 // 自動載入 Excel 檔案（加入 prevent cache 防快取機制）
 async function loadExcelData() {
     try {
-        // 加上動態時間戳記，強制瀏覽器每一次重新整理都抓最新版的 database.xlsx
         const cacheBuster = `?v=${Date.now()}`;
         let response = await fetch(`database.xlsx${cacheBuster}`);
         if (!response.ok) throw new Error("找不到 database.xlsx");
@@ -411,8 +414,6 @@ async function loadExcelData() {
 
         DATABASE = rawFilmJson.map(row => {
             let brand = String(row['品牌'] || row['brand'] || '').trim();
-            
-            // 位置校正 (前檔/前擋、去除前後空格)
             let rawPos = String(row['位置'] || row['part_type'] || '').trim();
             let partType = (rawPos === '前檔') ? '前擋' : rawPos;
 
@@ -422,7 +423,6 @@ async function loadExcelData() {
 
             let cars = rawCars.split(/[,/]+/).map(c => c.trim()).filter(Boolean);
 
-            // 解析透光度 (相容點點或逗點分隔)
             let rawVlts = String(row['透光度'] || row['vlts'] || '').trim();
             let vlts = rawVlts.split(/[,\.\s]+/).map(v => v.trim()).filter(Boolean);
 
@@ -702,8 +702,16 @@ function updateNote() {
     const carColor = document.getElementById('carColor').value;
     const agent = document.getElementById('agent').value;
     const location = document.getElementById('location').value;
+    const deliveryDateRaw = document.getElementById('deliveryDate').value;
     const otherInfo = document.getElementById('otherInfo').value;
 
+    // 格式化交車日期為 YYYY/MM/DD
+    let deliveryDateStr = '';
+    if (deliveryDateRaw) {
+        deliveryDateStr = deliveryDateRaw.replace(/-/g, '/');
+    }
+
+    // 1. 前擋
     const frontBrand = document.getElementById('front-brand').value;
     const frontSeries = cleanSeriesName(document.getElementById('front-series').value);
     const frontVlt = document.getElementById('front-vlt').value;
@@ -712,31 +720,33 @@ function updateNote() {
         frontStr = `前擋：${frontBrand} ${frontSeries}${frontVlt ? '-' + frontVlt : ''}`;
     }
 
+    // 2. 車身 (前座、後座、後擋)
     const bodyBrand = document.getElementById('body-brand').value;
     const bodySeries = cleanSeriesName(document.getElementById('body-series').value);
     const vltFront = document.getElementById('body-vlt-front').value;
     const vltRear = document.getElementById('body-vlt-rear').value;
     const vltBack = document.getElementById('body-vlt-back').value;
 
-    let bodyStr = '';
+    let bodyLines = [];
     if (bodyBrand && bodySeries) {
         const modelName = `${bodyBrand} ${bodySeries}`;
+        // 若三個位置透光度都一樣
         if (vltFront && vltFront === vltRear && vltRear === vltBack) {
-            bodyStr = `車身：${modelName}-${vltFront}`;
+            bodyLines.push(`車身：${modelName}-${vltFront}`);
         } else {
-            let parts = [];
-            if (vltFront) parts.push(`前窗 ${modelName}-${vltFront}`);
-            if (vltRear) parts.push(`後窗 ${modelName}-${vltRear}`);
-            if (vltBack) parts.push(`後擋 ${modelName}-${vltBack}`);
+            // 三個位置透光度不同，個別獨立成列顯示
+            if (vltFront) bodyLines.push(`前座：${modelName}-${vltFront}`);
+            if (vltRear) bodyLines.push(`後座：${modelName}-${vltRear}`);
+            if (vltBack) bodyLines.push(`後擋：${modelName}-${vltBack}`);
             
-            if (parts.length > 0) {
-                bodyStr = `車身：${parts.join('、')}`;
-            } else {
-                bodyStr = `車身：${modelName}`;
+            // 若皆未選擇透光度，則先顯示基本品牌系列
+            if (bodyLines.length === 0) {
+                bodyLines.push(`車身：${modelName}`);
             }
         }
     }
 
+    // 3. 天窗
     const sunroofBrand = document.getElementById('sunroof-brand').value;
     const sunroofSeries = cleanSeriesName(document.getElementById('sunroof-series').value);
     const sunroofVlt = document.getElementById('sunroof-vlt').value;
@@ -744,13 +754,6 @@ function updateNote() {
     if (sunroofBrand && sunroofSeries) {
         sunroofStr = `天窗：${sunroofBrand} ${sunroofSeries}${sunroofVlt ? '-' + sunroofVlt : ''}`;
     }
-
-    let tintLines = [];
-    if (frontStr) tintLines.push(frontStr);
-    if (bodyStr) tintLines.push(bodyStr);
-    if (sunroofStr) tintLines.push(sunroofStr);
-
-    const tintCombined = tintLines.join('\n');
 
     let lines = [
         `車身碼：${vin}`,
@@ -760,11 +763,17 @@ function updateNote() {
         `存放(施工)地點：${location}`
     ];
 
-    if (tintCombined) {
-        lines.push(tintCombined);
+    if (frontStr) lines.push(frontStr);
+    if (bodyLines.length > 0) {
+        bodyLines.forEach(line => lines.push(line));
+    }
+    if (sunroofStr) lines.push(sunroofStr);
+
+    if (deliveryDateStr) {
+        lines.push(`交車日：${deliveryDateStr}`);
     }
 
-    lines.push(`其他：${otherInfo}`);
+    lines.push(`補充事項：${otherInfo}`);
 
     document.getElementById('finalNote').value = lines.join('\n');
 }
@@ -816,8 +825,8 @@ function copyText(elementId) {
                 let bodyMissing = [];
                 if (!bodyBrand) bodyMissing.push('品牌');
                 if (!bodySeries) bodyMissing.push('系列');
-                if (!bodyVltFront) bodyMissing.push('前窗透光度');
-                if (!bodyVltRear) bodyMissing.push('後窗透光度');
+                if (!bodyVltFront) bodyMissing.push('前座透光度');
+                if (!bodyVltRear) bodyMissing.push('後座透光度');
                 if (!bodyVltBack) bodyMissing.push('後擋透光度');
                 missingFields.push(`【車身】設定未完備 (尚缺: ${bodyMissing.join('、')})`);
             }
