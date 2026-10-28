@@ -457,20 +457,17 @@ async function loadExcelData() {
 }
 
 function parseModelsFromSheet(worksheet) {
-    // 使用 header: 1 將 Excel 轉為二維陣列 [ [列1], [列2], ... ] 避免欄位名稱無法解析
     let rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
     CAR_MODELS = [];
     VIN_PREFIX_MAP = {};
 
     if (rows.length < 2) return;
 
-    // 尋找表頭欄位索引
     let header = rows[0].map(h => String(h || '').trim().toUpperCase());
     let codeIdx = header.findIndex(h => h.includes('車型') || h.includes('代碼') || h === 'CODE');
     let nameIdx = header.findIndex(h => h.includes('商品名') || h.includes('車款') || h === 'NAME');
     let vinIdx = header.findIndex(h => h.includes('VIN'));
 
-    // 預設位置防呆（0:車型, 1:商品名, 2:VIN）
     if (codeIdx === -1) codeIdx = 0;
     if (nameIdx === -1) nameIdx = 1;
     if (vinIdx === -1) vinIdx = 2;
@@ -544,14 +541,12 @@ function onVinInput() {
         vinAlert.style.display = 'none';
     }
 
-    // 當輸入達到 4 碼以上時比對 VIN 前綴
     if (cleanedValue.length >= 4) {
         const prefix4 = cleanedValue.substring(0, 4);
         const matchedModel = VIN_PREFIX_MAP[prefix4];
 
         if (matchedModel) {
             const carModelSelect = document.getElementById('carModel');
-            // 比對下拉選單中的 Option 值
             for (let i = 0; i < carModelSelect.options.length; i++) {
                 if (carModelSelect.options[i].value === matchedModel) {
                     if (carModelSelect.selectedIndex !== i) {
@@ -746,84 +741,99 @@ function updatePartInfo(partKey) {
     updateNote();
 }
 
+// 格式化型號與透光度的輔助函式
+function formatFilmName(brand, seriesRaw, vlt) {
+    const series = cleanSeriesName(seriesRaw);
+    if (!vlt) return `${brand} ${series}`;
+
+    if (brand === 'Smith') {
+        // Smith 規則：使用連字符號，如 Smith BELLA-70
+        return `${brand} ${series}-${vlt}`;
+    } else {
+        // FSK 與 3M 規則：移除中文、移除所有空格與連字符號，如 3M MB75, FSK KS40
+        let cleanedSeries = series.replace(/[\u4e00-\u9fa5]/g, ''); // 移除中文字（如：極黑、極透）
+        cleanedSeries = cleanedSeries.replace(/[-_\s]/g, '');      // 移除連字號、底線與空格
+        return `${brand} ${cleanedSeries}${vlt}`;
+    }
+}
+
 function updateNote() {
     const vin = document.getElementById('vin').value.trim().toUpperCase();
     const carModel = document.getElementById('carModel').value;
-    const carColor = document.getElementById('carColor').value;
-    const agent = document.getElementById('agent').value;
-    const location = document.getElementById('location').value;
+    const carColor = document.getElementById('carColor').value.trim();
+    const agent = document.getElementById('agent').value.trim();
+    const location = document.getElementById('location').value.trim();
     const deliveryDateRaw = document.getElementById('deliveryDate').value;
-    const otherInfo = document.getElementById('otherInfo').value;
+    const otherInfo = document.getElementById('otherInfo').value.trim();
 
-    // 格式化交車日期為 YYYY/MM/DD
-    let deliveryDateStr = '';
-    if (deliveryDateRaw) {
-        deliveryDateStr = deliveryDateRaw.replace(/-/g, '/');
+    let lines = [];
+
+    // 必填欄位：不論是否有填寫，標題皆必須固定保留顯示
+    lines.push(`車身碼：${vin}`);
+    lines.push(`車型：${carModel}`);
+    
+    // 選填欄位：有填寫時才放進備註區，沒填就完全隱藏不顯示
+    if (carColor) {
+        lines.push(`車色：${carColor}`);
     }
+    
+    // 必填欄位
+    lines.push(`業代：${agent}`);
+    lines.push(`存放(施工)地點：${location}`);
 
     // 1. 前擋
     const frontBrand = document.getElementById('front-brand').value;
-    const frontSeries = cleanSeriesName(document.getElementById('front-series').value);
+    const frontSeries = document.getElementById('front-series').value;
     const frontVlt = document.getElementById('front-vlt').value;
-    let frontStr = '';
     if (frontBrand && frontSeries) {
-        frontStr = `前擋：${frontBrand} ${frontSeries}${frontVlt ? '-' + frontVlt : ''}`;
+        const formattedFront = formatFilmName(frontBrand, frontSeries, frontVlt);
+        lines.push(`前擋：${formattedFront}`);
     }
 
     // 2. 車身 (前座、後座、後擋)
     const bodyBrand = document.getElementById('body-brand').value;
-    const bodySeries = cleanSeriesName(document.getElementById('body-series').value);
+    const bodySeries = document.getElementById('body-series').value;
     const vltFront = document.getElementById('body-vlt-front').value;
     const vltRear = document.getElementById('body-vlt-rear').value;
     const vltBack = document.getElementById('body-vlt-back').value;
 
-    let bodyLines = [];
     if (bodyBrand && bodySeries) {
-        const modelName = `${bodyBrand} ${bodySeries}`;
         // 若三個位置透光度都一樣
         if (vltFront && vltFront === vltRear && vltRear === vltBack) {
-            bodyLines.push(`車身：${modelName}-${vltFront}`);
+            const formattedBody = formatFilmName(bodyBrand, bodySeries, vltFront);
+            lines.push(`車身：${formattedBody}`);
         } else {
-            // 三個位置透光度不同，個別獨立成列顯示
-            if (vltFront) bodyLines.push(`前座：${modelName}-${vltFront}`);
-            if (vltRear) bodyLines.push(`後座：${modelName}-${vltRear}`);
-            if (vltBack) bodyLines.push(`後擋：${modelName}-${vltBack}`);
+            // 三個位置透光度不同，個別處理格式化後獨立成列
+            if (vltFront) lines.push(`前座：${formatFilmName(bodyBrand, bodySeries, vltFront)}`);
+            if (vltRear) lines.push(`後座：${formatFilmName(bodyBrand, bodySeries, vltRear)}`);
+            if (vltBack) lines.push(`後擋：${formatFilmName(bodyBrand, bodySeries, vltBack)}`);
             
             // 若皆未選擇透光度，則先顯示基本品牌系列
-            if (bodyLines.length === 0) {
-                bodyLines.push(`車身：${modelName}`);
+            if (!vltFront && !vltRear && !vltBack) {
+                lines.push(`車身：${formatFilmName(bodyBrand, bodySeries, '')}`);
             }
         }
     }
 
     // 3. 天窗
     const sunroofBrand = document.getElementById('sunroof-brand').value;
-    const sunroofSeries = cleanSeriesName(document.getElementById('sunroof-series').value);
+    const sunroofSeries = document.getElementById('sunroof-series').value;
     const sunroofVlt = document.getElementById('sunroof-vlt').value;
-    let sunroofStr = '';
     if (sunroofBrand && sunroofSeries) {
-        sunroofStr = `天窗：${sunroofBrand} ${sunroofSeries}${sunroofVlt ? '-' + sunroofVlt : ''}`;
+        const formattedSunroof = formatFilmName(sunroofBrand, sunroofSeries, sunroofVlt);
+        lines.push(`天窗：${formattedSunroof}`);
     }
 
-    let lines = [
-        `車身碼：${vin}`,
-        `車型：${carModel}`,
-        `車色：${carColor}`,
-        `業代：${agent}`,
-        `存放(施工)地點：${location}`
-    ];
-
-    if (frontStr) lines.push(frontStr);
-    if (bodyLines.length > 0) {
-        bodyLines.forEach(line => lines.push(line));
-    }
-    if (sunroofStr) lines.push(sunroofStr);
-
-    if (deliveryDateStr) {
+    // 選填欄位：交車日有填才加入
+    if (deliveryDateRaw) {
+        const deliveryDateStr = deliveryDateRaw.replace(/-/g, '/');
         lines.push(`交車日：${deliveryDateStr}`);
     }
 
-    lines.push(`補充事項：${otherInfo}`);
+    // 選填欄位：補充事項有填才加入
+    if (otherInfo) {
+        lines.push(`補充事項：${otherInfo}`);
+    }
 
     document.getElementById('finalNote').value = lines.join('\n');
 }
